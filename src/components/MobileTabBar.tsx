@@ -1,13 +1,14 @@
 import { navigate } from '../lib/routing'
-import { IconCompass, IconHome, IconLibrary } from './Icons'
+import { IconCompass, IconHeart, IconHome, IconLibrary } from './Icons'
 
 interface MobileTabBarProps {
-  current: 'home' | 'library' | 'wishlist' | 'discover' | 'other'
+  current: 'home' | 'library' | 'wishlist' | 'discover' | 'profile' | 'other'
 }
 
 const tabs = [
   { id: 'home' as const, href: '/', label: 'Inicio', Icon: IconHome },
   { id: 'library' as const, href: '/biblioteca', label: 'Biblioteca', Icon: IconLibrary },
+  { id: 'wishlist' as const, href: '/deseados', label: 'Deseados', Icon: IconHeart },
   { id: 'discover' as const, href: '/descubrir', label: 'Descubrir', Icon: IconCompass },
 ]
 

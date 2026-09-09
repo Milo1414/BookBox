@@ -1,4 +1,4 @@
-import { PRIORITY_ORDER } from '../constants'
+import { CATEGORIES, PRIORITY_ORDER } from '../constants'
 import type { Book, LibraryFilters, Priority } from '../types'
 
 const priorityRank: Record<Priority, number> = {
@@ -106,10 +106,149 @@ export function clampPageCount(value: number | null | undefined): number | null 
   return pages
 }
 
-export function readingProgress(book: Book): number | null {
+export function readingProgress(book: Pick<Book, 'readingStatus' | 'progress'>): number | null {
   if (book.readingStatus === 'read') return 100
   if (book.readingStatus !== 'reading') return null
   return clampProgress(book.progress)
+}
+
+export function currentPage(book: Pick<Book, 'readingStatus' | 'progress' | 'pageCount'>): number | null {
+  const pages = clampPageCount(book.pageCount)
+  if (!pages) return null
+  if (book.readingStatus === 'read') return pages
+  const percent = readingProgress(book)
+  if (percent == null) return null
+  return Math.max(0, Math.min(pages, Math.round((percent / 100) * pages)))
+}
+
+export function progressFromPage(page: number, pageCount: number): number | null {
+  const pages = clampPageCount(pageCount)
+  if (!pages) return null
+  return clampProgress((page / pages) * 100)
+}
+
+export function hasCover(book: Book): boolean {
+  return Boolean(book.coverUrl?.trim())
+}
+
+export function parseBookDate(value?: string | null): Date | null {
+  if (!value) return null
+  const day = value.slice(0, 10)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(day)) {
+    const [year, month, date] = day.split('-').map(Number)
+    return new Date(year, month - 1, date)
+  }
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function sameMonth(date: Date, now: Date): boolean {
+  return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth()
+}
+
+function sumPages(books: Book[]): number {
+  return books.reduce((total, book) => total + (clampPageCount(book.pageCount) ?? 0), 0)
+}
+
+export function readingStreakMonths(books: Book[], now = new Date()): number {
+  const months = new Set<string>()
+  for (const book of books) {
+    const date = parseBookDate(book.finishedAt)
+    if (!date) continue
+    months.add(`${date.getFullYear()}-${date.getMonth()}`)
+  }
+  let streak = 0
+  const cursor = new Date(now.getFullYear(), now.getMonth(), 1)
+  if (!months.has(`${cursor.getFullYear()}-${cursor.getMonth()}`)) {
+    cursor.setMonth(cursor.getMonth() - 1)
+  }
+  while (months.has(`${cursor.getFullYear()}-${cursor.getMonth()}`)) {
+    streak += 1
+    cursor.setMonth(cursor.getMonth() - 1)
+  }
+  return streak
+}
+
+export function readingReport(books: Book[], now = new Date()) {
+  const owned = books.filter((book) => book.ownership === 'owned')
+  const read = owned.filter((book) => book.readingStatus === 'read')
+  const dated = read
+    .map((book) => ({ book, date: parseBookDate(book.finishedAt) }))
+    .filter((item): item is { book: Book; date: Date } => item.date != null)
+  const monthBooks = dated.filter((item) => sameMonth(item.date, now)).map((item) => item.book)
+  const yearBooks = dated.filter((item) => item.date.getFullYear() === now.getFullYear()).map((item) => item.book)
+  return {
+    owned: owned.length,
+    pending: owned.filter((book) => book.readingStatus === 'pending').length,
+    reading: owned.filter((book) => book.readingStatus === 'reading').length,
+    wishlist: books.filter((book) => book.ownership === 'wishlist').length,
+    readTotal: read.length,
+    readMonth: monthBooks.length,
+    readYear: yearBooks.length,
+    pagesMonth: sumPages(monthBooks),
+    pagesYear: sumPages(yearBooks),
+    pagesTotal: sumPages(read),
+    streakMonths: readingStreakMonths(read, now),
+    yearBooks: [...yearBooks].sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? '')),
+  }
+}
+
+export interface DiscoverShelf {
+  id: string
+  title: string
+  books: Book[]
+  total: number
+}
+
+export function discoverShelves(books: Book[], limit = 8): DiscoverShelf[] {
+  const shelves: DiscoverShelf[] = []
+  const missingCover = books.filter((book) => !hasCover(book))
+  if (missingCover.length > 0) {
+    shelves.push({ id: 'sin-portada', title: 'Sin portada', books: missingCover.slice(0, limit), total: missingCover.length })
+  }
+
+  const authors = new Map<string, Book[]>()
+  for (const book of books) {
+    const author = book.author.trim()
+    if (!author) continue
+    const list = authors.get(author) ?? []
+    list.push(book)
+    authors.set(author, list)
+  }
+  const authorShelves = [...authors.entries()]
+    .filter(([, list]) => list.length >= 2)
+    .sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0], 'es'))
+    .slice(0, 6)
+    .map(([author, list]) => ({
+      id: `autor:${author}`,
+      title: author,
+      books: list.slice(0, limit),
+      total: list.length,
+    }))
+  shelves.push(...authorShelves)
+
+  const categoryShelves = CATEGORIES.map((category) => {
+    const list = books.filter((book) => book.categories.includes(category))
+    return { id: `cat:${category}`, title: category, books: list.slice(0, limit), total: list.length }
+  })
+    .filter((shelf) => shelf.total > 0)
+    .sort((a, b) => b.total - a.total)
+  shelves.push(...categoryShelves)
+
+  return shelves
+}
+
+export function booksForShelf(books: Book[], shelfId: string): Book[] {
+  if (shelfId === 'sin-portada') return books.filter((book) => !hasCover(book))
+  if (shelfId.startsWith('autor:')) {
+    const author = shelfId.slice(6)
+    return books.filter((book) => book.author.trim() === author)
+  }
+  if (shelfId.startsWith('cat:')) {
+    const category = shelfId.slice(4)
+    return books.filter((book) => book.categories.includes(category))
+  }
+  return []
 }
 
 export function bookQuote(book: Book): string {

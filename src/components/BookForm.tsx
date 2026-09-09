@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { CATEGORIES, FORMAT_OPTIONS, OWNERSHIP_OPTIONS, PRIORITY_ORDER, STATUS_OPTIONS } from '../constants'
 import { useLibrary } from '../context/LibraryContext'
-import { createBookId, createSlug, clampPageCount, clampProgress, findDuplicate } from '../lib/books'
+import { createBookId, createSlug, clampPageCount, clampProgress, findDuplicate, progressFromPage } from '../lib/books'
 import { friendlyError } from '../lib/errors'
 import { formatLabel, ownershipLabel, priorityLabel, statusLabel } from '../lib/labels'
 import { hrefForBook, navigate } from '../lib/routing'
@@ -189,7 +189,7 @@ export function BookForm({ book }: BookFormProps) {
       notes: emptyToNull(state.notes),
       learnings: isRead ? emptyToNull(state.learnings) : null,
       startedAt: isReading || isRead ? emptyToNull(state.startedAt) : null,
-      finishedAt: isRead ? emptyToNull(state.finishedAt) : null,
+      finishedAt: isRead ? emptyToNull(state.finishedAt) || new Date().toISOString().slice(0, 10) : null,
       epubFileName: book?.epubFileName ?? null,
       epubPath: book?.epubPath ?? null,
       epubSizeBytes: book?.epubSizeBytes ?? null,
@@ -373,17 +373,38 @@ export function BookForm({ book }: BookFormProps) {
 
           {isReading ? (
             <label className="field">
-              <span>Avance (%)</span>
+              <span>{clampPageCount(Number(state.pageCount)) ? 'Avance (página)' : 'Avance (%)'}</span>
               <input
                 type="number"
                 min={0}
-                max={100}
+                max={clampPageCount(Number(state.pageCount)) ?? 100}
                 inputMode="numeric"
                 placeholder="Opcional"
-                value={state.progress}
-                onChange={(event) => update('progress', event.target.value)}
+                value={
+                  clampPageCount(Number(state.pageCount)) && state.progress
+                    ? String(Math.round((Number(state.progress) / 100) * Number(state.pageCount)))
+                    : state.progress
+                }
+                onChange={(event) => {
+                  const pages = clampPageCount(Number(state.pageCount))
+                  const raw = event.target.value
+                  if (!pages) {
+                    update('progress', raw)
+                    return
+                  }
+                  if (raw.trim() === '') {
+                    update('progress', '')
+                    return
+                  }
+                  const next = progressFromPage(Number(raw.replace(',', '.')), pages)
+                  update('progress', next == null ? '' : String(next))
+                }}
               />
-              <p className="field-hint">Si lo dejás vacío, el libro queda en Leyendo sin porcentaje.</p>
+              <p className="field-hint">
+                {clampPageCount(Number(state.pageCount))
+                  ? `Sobre ${state.pageCount} páginas. Si lo dejás vacío, queda Leyendo sin página.`
+                  : 'Si lo dejás vacío, el libro queda en Leyendo sin porcentaje.'}
+              </p>
             </label>
           ) : null}
 

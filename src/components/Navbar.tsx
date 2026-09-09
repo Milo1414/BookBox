@@ -8,13 +8,14 @@ import { LoginModal } from './LoginModal'
 import { SearchOverlay } from './SearchOverlay'
 
 interface NavbarProps {
-  current: 'home' | 'library' | 'wishlist' | 'discover' | 'other'
+  current: 'home' | 'library' | 'wishlist' | 'discover' | 'profile' | 'other'
 }
 
 const links = [
   { id: 'home' as const, href: '/', label: 'Inicio' },
   { id: 'library' as const, href: '/biblioteca', label: 'Biblioteca' },
   { id: 'wishlist' as const, href: '/deseados', label: 'Deseados' },
+  { id: 'discover' as const, href: '/descubrir', label: 'Descubrir' },
 ]
 
 export function Navbar({ current }: NavbarProps) {
@@ -79,7 +80,7 @@ export function Navbar({ current }: NavbarProps) {
         >
           <IconPlus className="icon" />
         </a>
-        <AdminMenu onLogin={() => setLoginOpen(true)} />
+        <AdminMenu />
       </div>
       {busy ? <div className="busy-strip" role="status">{busy}</div> : null}
       {loginOpen ? <LoginModal onClose={() => setLoginOpen(false)} /> : null}

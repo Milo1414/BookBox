@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FORMAT_OPTIONS, PRIORITY_ORDER, STATUS_OPTIONS } from '../constants'
 import { useAuth } from '../context/AuthContext'
 import { useLibrary } from '../context/LibraryContext'
-import { clampProgress } from '../lib/books'
+import { clampPageCount, clampProgress, currentPage, progressFromPage } from '../lib/books'
 import { formatBytes, friendlyError } from '../lib/errors'
 import { formatDate, formatLabel, formatPages, formatPublished, priorityLabel, statusLabel } from '../lib/labels'
 import { hrefForBook, navigate } from '../lib/routing'
@@ -222,9 +222,9 @@ export function BookDetail({ book }: BookDetailProps) {
                         type="button"
                         className={`chip ${book.readingStatus === status ? 'is-active' : ''}`}
                         onClick={() => {
-                          if (status === 'pending') void patch({ readingStatus: status, progress: null, rating: null })
-                          else if (status === 'read') void patch({ readingStatus: status, progress: 100 })
-                          else void patch({ readingStatus: status, rating: null })
+                          if (status === 'pending') void patch({ readingStatus: status, progress: null, rating: null, finishedAt: null })
+                          else if (status === 'read') void patch({ readingStatus: status, progress: 100, finishedAt: book.finishedAt || new Date().toISOString().slice(0, 10) })
+                          else void patch({ readingStatus: status, rating: null, finishedAt: null })
                         }}
                       >
                         {statusLabel[status]}
@@ -237,6 +237,7 @@ export function BookDetail({ book }: BookDetailProps) {
               {book.ownership === 'owned' && book.readingStatus === 'reading' ? (
                 <ProgressEdit
                   value={book.progress ?? null}
+                  pageCount={book.pageCount ?? null}
                   onSave={(progress) => void patch({ progress })}
                 />
               ) : null}
@@ -403,29 +404,47 @@ export function BookDetail({ book }: BookDetailProps) {
   )
 }
 
-function ProgressEdit({ value, onSave }: { value: number | null; onSave: (progress: number | null) => void }) {
-  const [draft, setDraft] = useState(value == null ? '' : String(value))
+function ProgressEdit({
+  value,
+  pageCount,
+  onSave,
+}: {
+  value: number | null
+  pageCount: number | null
+  onSave: (progress: number | null) => void
+}) {
+  const pages = clampPageCount(pageCount)
+  const pageValue = pages ? currentPage({ readingStatus: 'reading', progress: value, pageCount: pages }) : null
+  const [draft, setDraft] = useState(pages ? (pageValue != null ? String(pageValue) : '') : value == null ? '' : String(value))
 
   useEffect(() => {
-    setDraft(value == null ? '' : String(value))
-  }, [value])
+    if (pages) setDraft(pageValue != null ? String(pageValue) : '')
+    else setDraft(value == null ? '' : String(value))
+  }, [value, pages, pageValue])
 
   function commit() {
-    const next = draft.trim() === '' ? null : clampProgress(Number(draft.replace(',', '.')))
-    setDraft(next == null ? '' : String(next))
+    if (draft.trim() === '') {
+      setDraft('')
+      if (value != null) onSave(null)
+      return
+    }
+    const raw = Number(draft.replace(',', '.'))
+    const next = pages ? progressFromPage(raw, pages) : clampProgress(raw)
+    if (pages && next != null) setDraft(String(Math.max(0, Math.min(pages, Math.round(raw)))))
+    else setDraft(next == null ? '' : String(next))
     if (next !== value) onSave(next)
   }
 
   return (
     <div className="priority-edit">
-      <span>Avance</span>
+      <span>{pages ? 'Avance (página)' : 'Avance'}</span>
       <div className="progress-edit">
         <input
           type="range"
           min={0}
-          max={100}
+          max={pages ?? 100}
           value={draft === '' ? 0 : Number(draft) || 0}
-          aria-label="Porcentaje leído"
+          aria-label={pages ? 'Página actual' : 'Porcentaje leído'}
           onChange={(event) => setDraft(event.target.value)}
           onPointerUp={commit}
           onKeyUp={(event) => {
@@ -435,9 +454,9 @@ function ProgressEdit({ value, onSave }: { value: number | null; onSave: (progre
         <input
           type="number"
           min={0}
-          max={100}
+          max={pages ?? 100}
           inputMode="numeric"
-          placeholder="%"
+          placeholder={pages ? 'pág.' : '%'}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
@@ -445,8 +464,15 @@ function ProgressEdit({ value, onSave }: { value: number | null; onSave: (progre
             if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
           }}
         />
+        {pages ? <span className="progress-total">/ {pages}</span> : null}
       </div>
-      <p className="field-hint">Si lo dejás vacío, se muestra Leyendo sin porcentaje.</p>
+      <p className="field-hint">
+        {pages
+          ? value != null
+            ? `${value}% del libro.`
+            : 'Si lo dejás vacío, se muestra Leyendo sin página.'
+          : 'Si lo dejás vacío, se muestra Leyendo sin porcentaje.'}
+      </p>
     </div>
   )
 }

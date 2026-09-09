@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { ReadingHero } from '../components/ReadingHero'
 import { ShelfRow } from '../components/ShelfRow'
 import { useLibrary } from '../context/LibraryContext'
-import { homeNextReads, homeWishlist, normalizeText } from '../lib/books'
+import { homeNextReads, homeWishlist, normalizeText, ownedPending, pickNextReads } from '../lib/books'
+import type { Book } from '../types'
 
 type ShelfFilter = 'all' | 'pending' | 'reading' | 'high'
 
@@ -23,10 +24,25 @@ export function Home() {
   }, [books, query, filter])
 
   const wished = useMemo(() => homeWishlist(books, 8), [books])
+  const pendingCount = ownedPending(books).length
+  const [picks, setPicks] = useState<Book[] | null>(null)
 
   return (
     <div className="page home-page">
       <ReadingHero books={books} />
+      {pendingCount > 0 ? (
+        <ShelfRow
+          title="Elegir por mí"
+          books={picks ?? []}
+          variant="next"
+          extra={
+            <button type="button" className="btn btn-ghost" onClick={() => setPicks(pickNextReads(books, 3))}>
+              {picks ? 'Otra vez' : 'Sugerir 3'}
+            </button>
+          }
+          emptyText="Te tiro 3 pendientes según tu prioridad. Si no te cierran, pedí otra tanda."
+        />
+      ) : null}
       <ShelfRow
         title="Próximas lecturas"
         href="/biblioteca"

@@ -12,13 +12,15 @@ import { MobileTabBar } from './components/MobileTabBar'
 import { Discover } from './pages/Discover'
 import { Home } from './pages/Home'
 import { Library } from './pages/Library'
+import { Profile } from './pages/Profile'
 import { Wishlist } from './pages/Wishlist'
 
-function navState(route: AppRoute): 'home' | 'library' | 'wishlist' | 'discover' | 'other' {
+function navState(route: AppRoute): 'home' | 'library' | 'wishlist' | 'discover' | 'profile' | 'other' {
   if (route.page === 'home') return 'home'
   if (route.page === 'library') return 'library'
   if (route.page === 'wishlist') return 'wishlist'
   if (route.page === 'discover') return 'discover'
+  if (route.page === 'profile') return 'profile'
   return 'other'
 }
 
@@ -59,6 +61,7 @@ export default function App() {
   else if (route.page === 'library') content = <Library />
   else if (route.page === 'wishlist') content = <Wishlist />
   else if (route.page === 'discover') content = <Discover />
+  else if (route.page === 'profile') content = <Profile />
   else if (route.page === 'epub') {
     const book = route.id ? getBook(route.id) : undefined
     content = route.id && !book ? <MissingBook /> : <EpubImport replaceBook={book} />

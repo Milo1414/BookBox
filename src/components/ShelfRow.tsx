@@ -1,6 +1,7 @@
+import type { ReactNode } from 'react'
 import { hrefForBook, navigate } from '../lib/routing'
-import { readingProgress } from '../lib/books'
-import { priorityChipLabel } from '../lib/labels'
+import { currentPage, readingProgress } from '../lib/books'
+import { formatPageProgress, priorityChipLabel } from '../lib/labels'
 import type { Book } from '../types'
 import { BookCover } from './BookCover'
 import { IconChevron, IconFunnel, IconSearch } from './Icons'
@@ -10,30 +11,38 @@ type ShelfFilter = 'all' | 'pending' | 'reading' | 'high'
 
 interface ShelfRowProps {
   title: string
-  href: string
+  href?: string
   books: Book[]
-  variant: 'next' | 'wish'
+  variant?: 'next' | 'wish' | 'browse'
   query?: string
   onQuery?: (value: string) => void
   filter?: ShelfFilter
   onFilter?: (value: ShelfFilter) => void
+  onOpen?: () => void
+  extra?: ReactNode
+  emptyText?: string
 }
 
-export function ShelfRow({ title, href, books, variant, query, onQuery, filter, onFilter }: ShelfRowProps) {
+export function ShelfRow({ title, href, books, variant = 'browse', query, onQuery, filter, onFilter, onOpen, extra, emptyText }: ShelfRowProps) {
   return (
     <section className={`shelf-section shelf-${variant}`}>
       <div className="shelf-heading">
-        <a
-          className="shelf-title"
-          href={href}
-          onClick={(event) => {
-            event.preventDefault()
-            navigate(href)
-          }}
-        >
-          {title}
-          <IconChevron className="icon" />
-        </a>
+        {href || onOpen ? (
+          <a
+            className="shelf-title"
+            href={href ?? '#'}
+            onClick={(event) => {
+              event.preventDefault()
+              if (onOpen) onOpen()
+              else if (href) navigate(href)
+            }}
+          >
+            {title}
+            <IconChevron className="icon" />
+          </a>
+        ) : (
+          <h2 className="shelf-title">{title}</h2>
+        )}
         {onQuery && onFilter ? (
           <div className="shelf-tools">
             <label className="shelf-search">
@@ -56,20 +65,24 @@ export function ShelfRow({ title, href, books, variant, query, onQuery, filter, 
             </label>
           </div>
         ) : null}
-        <a
-          className={`shelf-all ${onQuery ? 'mobile-only-link' : ''}`}
-          href={href}
-          onClick={(event) => {
-            event.preventDefault()
-            navigate(href)
-          }}
-        >
-          Ver todos
-        </a>
+        {extra}
+        {href || onOpen ? (
+          <a
+            className={`shelf-all ${onQuery ? 'mobile-only-link' : ''}`}
+            href={href ?? '#'}
+            onClick={(event) => {
+              event.preventDefault()
+              if (onOpen) onOpen()
+              else if (href) navigate(href)
+            }}
+          >
+            Ver todos
+          </a>
+        ) : null}
       </div>
 
       {books.length === 0 ? (
-        <p className="shelf-empty">Todavía no hay libros en esta estantería.</p>
+        <p className="shelf-empty">{emptyText ?? 'Todavía no hay libros en esta estantería.'}</p>
       ) : (
         <div className="shelf-grid">
           {books.map((book) => (
@@ -81,10 +94,12 @@ export function ShelfRow({ title, href, books, variant, query, onQuery, filter, 
   )
 }
 
-function ShelfCard({ book, variant }: { book: Book; variant: 'next' | 'wish' }) {
+function ShelfCard({ book, variant }: { book: Book; variant: 'next' | 'wish' | 'browse' }) {
   const reading = book.readingStatus === 'reading'
   const read = book.readingStatus === 'read'
   const progress = readingProgress(book)
+  const page = currentPage(book)
+  const pageMark = page != null && book.pageCount ? formatPageProgress(page, book.pageCount) : null
   const priority = book.priority === 'high' || book.priority === 'now' ? book.priority : null
   const wished = variant === 'wish' || book.ownership === 'wishlist'
 
@@ -106,7 +121,7 @@ function ShelfCard({ book, variant }: { book: Book; variant: 'next' | 'wish' }) 
         {!wished && reading ? (
           <>
             <span className="shelf-chip leyendo">Leyendo</span>
-            {progress != null ? <span className="shelf-percent">{progress}%</span> : null}
+            {pageMark ? <span className="shelf-percent">{pageMark}</span> : progress != null ? <span className="shelf-percent">{progress}%</span> : null}
           </>
         ) : null}
         {!wished && !reading && !read ? <span className="shelf-chip pendiente">Pendiente</span> : null}

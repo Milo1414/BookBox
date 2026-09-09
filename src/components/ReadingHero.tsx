@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
-import { bookQuote, featuredReading, libraryStats, readingProgress } from '../lib/books'
+import { bookQuote, currentPage, featuredReading, libraryStats, readingProgress } from '../lib/books'
+import { formatPageProgress } from '../lib/labels'
 import { hrefForBook, navigate } from '../lib/routing'
 import type { Book } from '../types'
 import { BookCover } from './BookCover'
@@ -14,6 +15,16 @@ export function ReadingHero({ books }: ReadingHeroProps) {
   const stats = libraryStats(books)
   const isReading = featured?.readingStatus === 'reading'
   const progress = isReading && featured ? readingProgress(featured) : null
+  const page = isReading && featured ? currentPage(featured) : null
+  const pageTotal = isReading ? featured?.pageCount ?? null : null
+  const progressLabel =
+    page != null && pageTotal
+      ? `${formatPageProgress(page, pageTotal)}${progress != null ? ` · ${progress}%` : ''}`
+      : progress != null
+        ? `${progress}%`
+        : pageTotal
+          ? `${pageTotal} págs.`
+          : null
 
   return (
     <>
@@ -37,12 +48,12 @@ export function ReadingHero({ books }: ReadingHeroProps) {
               <p className="hero-kicker">{isReading ? 'Leyendo ahora' : 'Próxima lectura'}</p>
               <h1>{featured.title}</h1>
               <p className="hero-author">{featured.author}</p>
-              {isReading && progress != null ? (
+              {isReading && progressLabel ? (
                 <div className="hero-progress">
                   <span className="progress-track" aria-hidden="true">
-                    <span className="progress-fill" style={{ width: `${progress}%` }} />
+                    <span className="progress-fill" style={{ width: `${progress ?? 0}%` }} />
                   </span>
-                  <span>{progress}%</span>
+                  <span>{progressLabel}</span>
                 </div>
               ) : null}
               <blockquote>“{bookQuote(featured)}”</blockquote>

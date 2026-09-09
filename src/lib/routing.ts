@@ -3,6 +3,7 @@ export type AppRoute =
   | { page: 'library' }
   | { page: 'wishlist' }
   | { page: 'discover' }
+  | { page: 'profile' }
   | { page: 'detail'; id: string }
   | { page: 'form'; id?: string }
   | { page: 'epub'; id?: string }
@@ -14,6 +15,7 @@ export function parsePath(pathname: string): AppRoute {
   if (path === '/biblioteca') return { page: 'library' }
   if (path === '/deseados') return { page: 'wishlist' }
   if (path === '/descubrir') return { page: 'discover' }
+  if (path === '/perfil') return { page: 'profile' }
   if (path === '/agregar') return { page: 'form' }
   if (path === '/subir-epub') return { page: 'epub' }
 

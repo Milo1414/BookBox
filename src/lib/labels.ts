@@ -42,9 +42,17 @@ export function formatDate(value?: string | null): string | null {
   }).format(date)
 }
 
+export function formatNumber(value: number): string {
+  return new Intl.NumberFormat('es').format(value)
+}
+
 export function formatPages(value?: number | null): string | null {
   if (value == null || value < 1) return null
-  return `${value} ${value === 1 ? 'página' : 'páginas'}`
+  return `${formatNumber(value)} ${value === 1 ? 'página' : 'páginas'}`
+}
+
+export function formatPageProgress(current: number, total: number): string {
+  return `${formatNumber(current)} / ${formatNumber(total)}`
 }
 
 export function formatPublished(value?: string | null): string | null {
