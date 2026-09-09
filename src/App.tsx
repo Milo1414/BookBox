@@ -81,7 +81,7 @@ export default function App() {
         {content}
       </main>
       {toast ? <Toast message={toast.message} onDismiss={dismissToast} /> : null}
-      <MobileTabBar current={navState(route)} onProfile={() => document.getElementById('profile-trigger')?.click()} />
+      <MobileTabBar current={navState(route)} />
     </div>
   )
 }

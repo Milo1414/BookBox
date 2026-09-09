@@ -1,10 +1,8 @@
-import { useAuth } from '../context/AuthContext'
 import { navigate } from '../lib/routing'
 import { IconCompass, IconHome, IconLibrary } from './Icons'
 
 interface MobileTabBarProps {
   current: 'home' | 'library' | 'wishlist' | 'discover' | 'other'
-  onProfile: () => void
 }
 
 const tabs = [
@@ -13,10 +11,7 @@ const tabs = [
   { id: 'discover' as const, href: '/descubrir', label: 'Descubrir', Icon: IconCompass },
 ]
 
-export function MobileTabBar({ current, onProfile }: MobileTabBarProps) {
-  const { user } = useAuth()
-  const initial = user?.email?.[0]?.toUpperCase() ?? 'C'
-
+export function MobileTabBar({ current }: MobileTabBarProps) {
   return (
     <nav className="tabbar" aria-label="Principal">
       {tabs.map((tab) => {
@@ -39,10 +34,6 @@ export function MobileTabBar({ current, onProfile }: MobileTabBarProps) {
           </a>
         )
       })}
-      <button type="button" className={`tabbar-item ${current === 'other' ? '' : ''}`} onClick={onProfile}>
-        <span className="tabbar-icon tabbar-avatar">{initial}</span>
-        <span>Perfil</span>
-      </button>
     </nav>
   )
 }

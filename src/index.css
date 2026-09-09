@@ -1708,14 +1708,16 @@ main {
 
 @media (max-width: 860px) {
   .tabbar {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.4rem;
     position: fixed;
     left: 0;
     right: 0;
     bottom: 0;
     z-index: 25;
-    padding: 0.45rem 0.4rem calc(0.45rem + env(safe-area-inset-bottom));
+    padding: 0.45rem 1.2rem calc(0.45rem + env(safe-area-inset-bottom));
     background: #181412;
     border-top: 1px solid var(--line);
   }
@@ -1732,7 +1734,8 @@ main {
     font-size: 0.6875rem;
     font-weight: 500;
     cursor: pointer;
-    min-width: 0;
+    min-width: 5.6rem;
+    flex: 0 0 auto;
   }
 
   .tabbar-icon {
