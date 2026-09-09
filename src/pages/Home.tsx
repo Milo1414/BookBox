@@ -14,7 +14,7 @@ export function Home() {
 
   const upcoming = useMemo(() => {
     const q = normalizeText(query)
-    return homeNextReads(books, 8).filter((book) => {
+    return homeNextReads(books, 40).filter((book) => {
       if (q && !normalizeText(`${book.title} ${book.author}`).includes(q)) return false
       if (filter === 'pending') return book.readingStatus === 'pending'
       if (filter === 'reading') return book.readingStatus === 'reading'
@@ -23,7 +23,7 @@ export function Home() {
     })
   }, [books, query, filter])
 
-  const wished = useMemo(() => homeWishlist(books, 8), [books])
+  const wished = useMemo(() => homeWishlist(books, 40), [books])
   const pendingCount = ownedPending(books).length
   const [picks, setPicks] = useState<Book[] | null>(null)
 

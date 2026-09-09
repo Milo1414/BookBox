@@ -200,7 +200,7 @@ export interface DiscoverShelf {
   total: number
 }
 
-export function discoverShelves(books: Book[], limit = 8): DiscoverShelf[] {
+export function discoverShelves(books: Book[], limit = 24): DiscoverShelf[] {
   const shelves: DiscoverShelf[] = []
   const missingCover = books.filter((book) => !hasCover(book))
   if (missingCover.length > 0) {

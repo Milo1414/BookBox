@@ -1583,19 +1583,23 @@ main {
 }
 
 .shelf-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.4rem, 1fr));
-  grid-template-rows: max-content;
-  grid-auto-rows: 0;
-  overflow: hidden;
-  column-gap: 0.8rem;
-  row-gap: 0;
+  display: flex;
+  gap: 0.85rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.shelf-grid::-webkit-scrollbar {
+  display: none;
 }
 
 @media (min-width: 861px) {
   .shelf-grid {
-    grid-template-columns: repeat(auto-fill, minmax(8.35rem, 1fr));
-    column-gap: 1rem;
+    gap: 1rem;
   }
 }
 
@@ -1608,8 +1612,26 @@ main {
 .wish-card:link,
 .wish-card:visited {
   text-decoration: none;
-  min-width: 0;
+  flex: 0 0 6.15rem;
+  width: 6.15rem;
+  min-width: 6.15rem;
+  scroll-snap-align: start;
   color: var(--text);
+}
+
+@media (min-width: 861px) {
+  .shelf-card,
+  .shelf-card:link,
+  .shelf-card:visited,
+  .shelf-card:hover,
+  .shelf-card:active,
+  .wish-card,
+  .wish-card:link,
+  .wish-card:visited {
+    flex-basis: 8.35rem;
+    width: 8.35rem;
+    min-width: 8.35rem;
+  }
 }
 
 .shelf-card h3,
