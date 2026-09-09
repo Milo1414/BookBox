@@ -39,6 +39,7 @@ export const FORMAT_OPTIONS: Format[] = ['epub', 'physical', 'both']
 export const STORAGE_KEY = 'bookbox.library.v1'
 export const MIGRATION_KEY = 'bookbox.migrated.v1'
 export const CATALOG_CACHE_KEY = 'bookbox.catalog.cache'
+export const AUTH_STORAGE_KEY = 'bookbox.auth'
 export const MAX_EPUB_BYTES = 80 * 1024 * 1024
 export const COVER_BUCKET = 'book-covers'
 export const FILE_BUCKET = 'book-files'
