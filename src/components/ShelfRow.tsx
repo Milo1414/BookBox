@@ -112,23 +112,23 @@ function ShelfCard({ book, variant }: { book: Book; variant: 'next' | 'wish' | '
         navigate(hrefForBook(book))
       }}
     >
-      <BookCover title={book.title} author={book.author} coverUrl={book.coverUrl} showCaption={false} />
+      <div className="shelf-cover-wrap">
+        <BookCover title={book.title} author={book.author} coverUrl={book.coverUrl} showCaption={false} />
+        <div className="shelf-chips">
+          {wished ? <span className="shelf-chip deseado">Deseado</span> : null}
+          {!wished && reading ? <span className="shelf-chip leyendo">Leyendo</span> : null}
+          {!wished && !reading && !read ? <span className="shelf-chip pendiente">Pendiente</span> : null}
+          {priority ? (
+            <span className={`shelf-chip ${priority === 'now' ? 'ya' : 'alta'}`}>{priorityChipLabel[priority]}</span>
+          ) : null}
+        </div>
+      </div>
       <h3>{book.title}</h3>
       <p>{book.author}</p>
       {read ? <StarRating value={book.rating} size="sm" /> : null}
-      <div className="shelf-chips">
-        {wished ? <span className="shelf-chip deseado">Deseado</span> : null}
-        {!wished && reading ? (
-          <>
-            <span className="shelf-chip leyendo">Leyendo</span>
-            {pageMark ? <span className="shelf-percent">{pageMark}</span> : progress != null ? <span className="shelf-percent">{progress}%</span> : null}
-          </>
-        ) : null}
-        {!wished && !reading && !read ? <span className="shelf-chip pendiente">Pendiente</span> : null}
-        {priority ? (
-          <span className={`shelf-chip ${priority === 'now' ? 'ya' : 'alta'}`}>{priorityChipLabel[priority]}</span>
-        ) : null}
-      </div>
+      {reading && (pageMark || progress != null) ? (
+        <span className="shelf-percent">{pageMark ?? `${progress}%`}</span>
+      ) : null}
     </a>
   )
 }
