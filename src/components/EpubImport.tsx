@@ -1,24 +1,27 @@
-import { useState } from 'react'
+import { useState, type DragEvent } from 'react'
 import { CATEGORIES, FORMAT_OPTIONS, PRIORITY_ORDER, STATUS_OPTIONS } from '../constants'
 import { useAuth } from '../context/AuthContext'
 import { useLibrary } from '../context/LibraryContext'
 import { clampPageCount, createBookId, createSlug, findDuplicate } from '../lib/books'
-import { friendlyError } from '../lib/errors'
+import { formatBytes, friendlyError } from '../lib/errors'
 import { formatLabel, priorityLabel, statusLabel } from '../lib/labels'
 import { hrefForBook, navigate } from '../lib/routing'
-import { parseEpub } from '../services/epub'
-import { lookupBookFacts, searchCoverCandidates } from '../services/search'
+import { isEpubFile, parseEpub } from '../services/epub'
+import { isPdfFile, titleFromPdfName, validatePdf } from '../services/pdf'
+import { lookupBookFacts, lookupSuggestedCategories, searchCoverCandidates } from '../services/search'
 import type { Book, CoverCandidate, Format, Priority, ReadingStatus } from '../types'
 import { BookCover } from './BookCover'
 import { DuplicateDialog } from './DuplicateDialog'
 
 export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
   const { configured } = useAuth()
-  const { books, upsertBook, attachEpub, showToast } = useLibrary()
-  const [drag, setDrag] = useState(false)
+  const { books, upsertBook, attachBookFiles, showToast } = useLibrary()
+  const [epubDrag, setEpubDrag] = useState(false)
+  const [pdfDrag, setPdfDrag] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [file, setFile] = useState<File | null>(null)
+  const [epubFile, setEpubFile] = useState<File | null>(null)
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [title, setTitle] = useState(replaceBook?.title ?? '')
   const [author, setAuthor] = useState(replaceBook?.author ?? '')
   const [isbn, setIsbn] = useState(replaceBook?.isbn ?? '')
@@ -29,6 +32,7 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
   const [readingStatus, setReadingStatus] = useState<ReadingStatus>(replaceBook?.readingStatus ?? 'pending')
   const [format, setFormat] = useState<Format>(replaceBook?.format === 'physical' ? 'both' : replaceBook?.format ?? 'epub')
   const [categories, setCategories] = useState<string[]>(replaceBook?.categories ?? [])
+  const [categoryHint, setCategoryHint] = useState<string | null>(null)
   const [coverUrl, setCoverUrl] = useState(replaceBook?.coverUrl ?? '')
   const [coverBlob, setCoverBlob] = useState<Blob | null>(null)
   const [candidates, setCandidates] = useState<CoverCandidate[]>([])
@@ -36,37 +40,86 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
   const [forceCreate, setForceCreate] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  async function handleFile(next: File) {
+  function handleDropped(list: FileList | File[] | null) {
+    if (!list || list.length === 0) return
+    const files = [...list]
+    const epub = files.find((file) => isEpubFile(file) && !isPdfFile(file))
+    const pdf = files.find(isPdfFile)
+    if (!epub && !pdf) {
+      setError('Solo se aceptan archivos EPUB o PDF.')
+      return
+    }
+    if (pdf) takePdf(pdf, Boolean(epub))
+    if (epub) void takeEpub(epub)
+  }
+
+  async function applySuggestedCategories(query: { title?: string; author?: string; isbn?: string; subjects?: string[] }) {
+    if (replaceBook?.categories.length) return
+    try {
+      const suggested = await lookupSuggestedCategories(query)
+      setCategories(suggested)
+      setCategoryHint(
+        suggested.length
+          ? 'Sugeridas según el archivo, Google Books y Open Library. Podés ajustarlas.'
+          : 'No encontré categorías automáticas. Elegilas a mano si querés.',
+      )
+    } catch {
+      setCategoryHint('No pude sugerir categorías ahora. Elegilas a mano si querés.')
+    }
+  }
+
+  function takePdf(next: File, skipCategories = false) {
+    try {
+      validatePdf(next)
+      setError(null)
+      setPdfFile(next)
+      const nextTitle = !replaceBook && !title.trim() ? titleFromPdfName(next) : title
+      if (nextTitle !== title) setTitle(nextTitle)
+      if (!skipCategories && !replaceBook?.categories.length) {
+        void applySuggestedCategories({ title: nextTitle, author, isbn })
+      }
+    } catch (err) {
+      setError(friendlyError(err, 'No pude leer ese PDF.'))
+    }
+  }
+
+  async function takeEpub(next: File) {
     setError(null)
+    setCategoryHint(null)
     setStatus('Procesando metadata...')
     try {
       const parsed = await parseEpub(next)
-      setFile(next)
+      setEpubFile(next)
       setTitle(parsed.title)
       setAuthor(parsed.author)
       setIsbn(parsed.isbn ?? '')
       if (parsed.pageCount) setPageCount(String(parsed.pageCount))
       if (parsed.publisher) setPublisher(parsed.publisher)
       if (parsed.published) setPublished(parsed.published)
-      if (!parsed.pageCount) {
-        const facts = await lookupBookFacts({ title: parsed.title, author: parsed.author, isbn: parsed.isbn ?? undefined })
-        if (facts.pageCount) setPageCount(String(facts.pageCount))
-        if (facts.publisher && !parsed.publisher) setPublisher(facts.publisher)
-        if (facts.published && !parsed.published) setPublished(facts.published)
-      }
+
+      const query = { title: parsed.title, author: parsed.author, isbn: parsed.isbn ?? undefined }
+      setStatus('Completando ficha...')
+      const [facts, found] = await Promise.all([
+        parsed.pageCount ? Promise.resolve(null) : lookupBookFacts(query),
+        parsed.coverUrl ? Promise.resolve([] as CoverCandidate[]) : searchCoverCandidates(query),
+        applySuggestedCategories({ ...query, subjects: parsed.subjects }),
+      ])
+
+      if (facts?.pageCount) setPageCount(String(facts.pageCount))
+      if (facts?.publisher && !parsed.publisher) setPublisher(facts.publisher)
+      if (facts?.published && !parsed.published) setPublished(facts.published)
+
       if (parsed.coverUrl) {
         setCoverUrl(parsed.coverUrl)
         setCoverBlob(parsed.coverBlob)
         setCandidates([])
       } else {
-        setStatus('Buscando portada...')
-        const found = await searchCoverCandidates({ title: parsed.title, author: parsed.author, isbn: parsed.isbn ?? undefined })
         setCandidates(found)
         if (!found.length) setCoverUrl('')
       }
       setStatus(null)
     } catch (err) {
-      setFile(null)
+      setEpubFile(null)
       setStatus(null)
       setError(friendlyError(err, 'No pude leer ese EPUB.'))
     }
@@ -113,26 +166,37 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
       progress: base?.progress ?? null,
       startedAt: base?.startedAt ?? null,
       finishedAt: base?.finishedAt ?? null,
-      epubFileName: file?.name ?? base?.epubFileName ?? null,
+      epubFileName: epubFile?.name ?? base?.epubFileName ?? null,
       epubPath: base?.epubPath ?? null,
-      epubSizeBytes: file?.size ?? base?.epubSizeBytes ?? null,
+      epubSizeBytes: epubFile?.size ?? base?.epubSizeBytes ?? null,
+      pdfFileName: pdfFile?.name ?? base?.pdfFileName ?? null,
+      pdfPath: base?.pdfPath ?? null,
+      pdfSizeBytes: pdfFile?.size ?? base?.pdfSizeBytes ?? null,
       createdAt: base?.createdAt ?? new Date().toISOString(),
       userId: base?.userId,
     }
   }
 
   async function save(base?: Book) {
-    if (!file) return
+    if (!epubFile && !pdfFile) return
     setSaving(true)
     setError(null)
     try {
       const draft = buildBook(base)
       const saved = await upsertBook(draft, { coverFile: coverBlob })
-      await attachEpub(saved, file, null)
-      showToast(base?.ownership === 'wishlist' ? 'Marcado como adquirido.' : replaceBook ? 'EPUB reemplazado.' : 'Libro agregado.')
+      await attachBookFiles(saved, { epub: epubFile, pdf: pdfFile }, null)
+      const parts = [epubFile ? 'EPUB' : null, pdfFile ? 'PDF' : null].filter(Boolean)
+      const filesLabel = parts.join(' y ')
+      showToast(
+        base?.ownership === 'wishlist'
+          ? 'Marcado como adquirido.'
+          : replaceBook
+            ? `${filesLabel} guardado.`
+            : 'Libro agregado.',
+      )
       navigate(hrefForBook(saved))
     } catch (err) {
-      setError(friendlyError(err, 'No pude guardar el EPUB.'))
+      setError(friendlyError(err, 'No pude guardar los archivos.'))
     } finally {
       setSaving(false)
     }
@@ -141,6 +205,10 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
   async function onConfirm() {
     if (!title.trim() || !author.trim()) {
       setError('Título y autor son obligatorios.')
+      return
+    }
+    if (!epubFile && !pdfFile) {
+      setError('Elegí un EPUB, un PDF o ambos.')
       return
     }
     if (replaceBook) {
@@ -155,42 +223,65 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
     await save()
   }
 
+  const showForm = Boolean(epubFile || pdfFile || replaceBook)
+  const saveLabel = saving
+    ? 'Guardando…'
+    : replaceBook
+      ? epubFile && pdfFile
+        ? 'Guardar archivos'
+        : epubFile
+          ? replaceBook.epubFileName
+            ? 'Reemplazar EPUB'
+            : 'Agregar EPUB'
+          : pdfFile
+            ? replaceBook.pdfFileName
+              ? 'Reemplazar PDF'
+              : 'Agregar PDF'
+            : 'Guardar archivos'
+      : 'Agregar a biblioteca'
+
   return (
     <div className="page epub-page">
       <header className="page-header">
-        <p className="eyebrow">{replaceBook ? 'Reemplazar archivo' : 'Importar'}</p>
-        <h1>{replaceBook ? `EPUB de ${replaceBook.title}` : 'Subir EPUB'}</h1>
-        <p className="lede">Analizamos el archivo en tu navegador. Nada se sube hasta que confirmes.</p>
+        <p className="eyebrow">{replaceBook ? 'Archivos del libro' : 'Importar'}</p>
+        <h1>{replaceBook ? `Archivos de ${replaceBook.title}` : 'Subir EPUB o PDF'}</h1>
+        <p className="lede">Podés adjuntar EPUB, PDF o ambos. Sugerimos categorías según el libro. Nada se sube hasta que confirmes.</p>
         {!configured ? (
-          <p className="muted">Supabase no está configurado: se guarda la metadata en local. El archivo EPUB se sube cuando conectes Storage.</p>
+          <p className="muted">Supabase no está configurado: se guarda la metadata en local. Los archivos se suben cuando conectes Storage.</p>
         ) : null}
       </header>
 
-      <label
-        className={`dropzone ${drag ? 'is-dragging' : ''}`}
-        onDragOver={(event) => {
-          event.preventDefault()
-          setDrag(true)
-        }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={(event) => {
-          event.preventDefault()
-          setDrag(false)
-          const dropped = event.dataTransfer.files[0]
-          if (dropped) void handleFile(dropped)
-        }}
-      >
-        <strong>Arrastrá tu EPUB aquí</strong>
-        <span>o seleccioná un archivo</span>
-        <input type="file" accept=".epub,application/epub+zip" hidden onChange={(event) => event.target.files?.[0] && void handleFile(event.target.files[0])} />
-      </label>
+      <div className="file-drop-grid">
+        <FileDropSlot
+          label="EPUB"
+          hint={epubFile?.name ?? replaceBook?.epubFileName ?? 'Arrastrá el EPUB o seleccioná un archivo'}
+          hasFile={Boolean(epubFile || replaceBook?.epubFileName)}
+          dragging={epubDrag}
+          accept=".epub,.pdf,application/epub+zip,application/pdf"
+          multiple
+          size={epubFile?.size ?? replaceBook?.epubSizeBytes}
+          onDrag={setEpubDrag}
+          onFiles={handleDropped}
+        />
+        <FileDropSlot
+          label="PDF"
+          hint={pdfFile?.name ?? replaceBook?.pdfFileName ?? 'Arrastrá el PDF o seleccioná un archivo'}
+          hasFile={Boolean(pdfFile || replaceBook?.pdfFileName)}
+          dragging={pdfDrag}
+          accept=".epub,.pdf,application/epub+zip,application/pdf"
+          multiple
+          size={pdfFile?.size ?? replaceBook?.pdfSizeBytes}
+          onDrag={setPdfDrag}
+          onFiles={handleDropped}
+        />
+      </div>
 
       {status ? <p className="muted">{status}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
 
-      {file ? (
+      {showForm ? (
         <section className="panel epub-preview">
-          <BookCover title={title || 'EPUB'} author={author || 'Autor'} coverUrl={coverUrl} className="cover-lg" />
+          <BookCover title={title || 'Libro'} author={author || 'Autor'} coverUrl={coverUrl} className="cover-lg" />
           <div className="form-fields">
             <label className="field">
               <span>Título</span>
@@ -209,7 +300,24 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
               <span>Páginas</span>
               <input type="number" min={1} max={20000} inputMode="numeric" value={pageCount} onChange={(event) => setPageCount(event.target.value)} placeholder="Opcional" />
             </label>
-            <p className="muted">Archivo: {file.name} · Formato EPUB</p>
+            <ul className="file-summary">
+              <li>
+                EPUB:{' '}
+                {epubFile
+                  ? `${epubFile.name}${formatBytes(epubFile.size) ? ` · ${formatBytes(epubFile.size)}` : ''}`
+                  : replaceBook?.epubFileName
+                    ? `${replaceBook.epubFileName} (actual)`
+                    : 'sin archivo'}
+              </li>
+              <li>
+                PDF:{' '}
+                {pdfFile
+                  ? `${pdfFile.name}${formatBytes(pdfFile.size) ? ` · ${formatBytes(pdfFile.size)}` : ''}`
+                  : replaceBook?.pdfFileName
+                    ? `${replaceBook.pdfFileName} (actual)`
+                    : 'sin archivo'}
+              </li>
+            </ul>
             <fieldset className="choice-row">
               <legend>Prioridad</legend>
               {PRIORITY_ORDER.map((value) => (
@@ -245,12 +353,16 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
                     key={category}
                     type="button"
                     className={`tag ${categories.includes(category) ? 'is-active' : ''}`}
-                    onClick={() => setCategories((current) => (current.includes(category) ? current.filter((item) => item !== category) : [...current, category]))}
+                    onClick={() => {
+                      setCategories((current) => (current.includes(category) ? current.filter((item) => item !== category) : [...current, category]))
+                      setCategoryHint(null)
+                    }}
                   >
                     {category}
                   </button>
                 ))}
               </div>
+              {categoryHint ? <p className="field-hint">{categoryHint}</p> : null}
             </div>
             <button type="button" className="btn btn-ghost" onClick={() => void searchCovers()}>
               Buscar portada
@@ -277,8 +389,8 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
               <button type="button" className="btn btn-ghost" onClick={() => navigate(replaceBook ? hrefForBook(replaceBook) : '/')}>
                 Cancelar
               </button>
-              <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void onConfirm()}>
-                {saving ? 'Guardando…' : replaceBook ? 'Reemplazar EPUB' : 'Agregar a biblioteca'}
+              <button type="button" className="btn btn-primary" disabled={saving || (!epubFile && !pdfFile)} onClick={() => void onConfirm()}>
+                {saveLabel}
               </button>
             </div>
           </div>
@@ -313,5 +425,59 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
         />
       ) : null}
     </div>
+  )
+}
+
+function FileDropSlot({
+  label,
+  hint,
+  hasFile,
+  dragging,
+  accept,
+  size,
+  multiple = false,
+  onDrag,
+  onFiles,
+}: {
+  label: string
+  hint: string
+  hasFile: boolean
+  dragging: boolean
+  accept: string
+  size?: number | null
+  multiple?: boolean
+  onDrag: (value: boolean) => void
+  onFiles: (files: FileList | File[] | null) => void
+}) {
+  function onDragOver(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault()
+    onDrag(true)
+  }
+
+  return (
+    <label
+      className={`dropzone ${dragging ? 'is-dragging' : ''} ${hasFile ? 'has-file' : ''}`}
+      onDragOver={onDragOver}
+      onDragLeave={() => onDrag(false)}
+      onDrop={(event) => {
+        event.preventDefault()
+        onDrag(false)
+        onFiles(event.dataTransfer.files)
+      }}
+    >
+      <strong>{label}</strong>
+      <span>{hint}</span>
+      {formatBytes(size) ? <span className="muted">{formatBytes(size)}</span> : null}
+      <input
+        type="file"
+        accept={accept}
+        multiple={multiple}
+        hidden
+        onChange={(event) => {
+          onFiles(event.target.files)
+          event.target.value = ''
+        }}
+      />
+    </label>
   )
 }

@@ -17,6 +17,9 @@ export function friendlyError(error: unknown, fallback = 'Algo salió mal. Prob�
   if (lower.includes('bucket') || lower.includes('storage') || lower.includes('object')) return 'No pude guardar o leer el archivo.'
   if (lower.includes('payload') || lower.includes('too large') || lower.includes('maximum')) return 'El archivo es demasiado grande.'
   if (lower.includes('invalid') && lower.includes('epub')) return 'Ese archivo no parece un EPUB válido.'
+  if (lower.includes('pdf') && (lower.includes('invalid') || lower.includes('válido') || lower.includes('valido') || lower.includes('valid'))) {
+    return 'Ese archivo no parece un PDF válido.'
+  }
 
   console.error(error)
   return fallback

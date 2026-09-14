@@ -7,7 +7,7 @@ import { formatBytes, friendlyError } from '../lib/errors'
 import { formatDate, formatLabel, formatPages, formatPublished, priorityLabel, statusLabel } from '../lib/labels'
 import { hrefForBook, navigate } from '../lib/routing'
 import { clearBookFactsCache, lookupBookFacts } from '../services/search'
-import { signedEpubUrl } from '../services/storage'
+import { signedFileUrl } from '../services/storage'
 import type { Book, BookFacts, Format, Priority, ReadingStatus } from '../types'
 import { BookCover } from './BookCover'
 import { CategoryTag } from './CategoryTag'
@@ -25,7 +25,7 @@ export function BookDetail({ book }: BookDetailProps) {
   const { upsertBook, deleteBook, showToast } = useLibrary()
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [converting, setConverting] = useState(false)
-  const [downloading, setDownloading] = useState(false)
+  const [downloading, setDownloading] = useState<'epub' | 'pdf' | null>(null)
   const [convert, setConvert] = useState<{ format: Format; readingStatus: ReadingStatus; priority: Priority }>({
     format: 'epub',
     readingStatus: 'pending',
@@ -96,22 +96,23 @@ export function BookDetail({ book }: BookDetailProps) {
     }
   }
 
-  async function downloadEpub() {
-    if (!book.epubPath) return
-    setDownloading(true)
+  async function downloadFile(kind: 'epub' | 'pdf') {
+    const path = kind === 'epub' ? book.epubPath : book.pdfPath
+    if (!path) return
+    setDownloading(kind)
     try {
-      const url = await signedEpubUrl(book.epubPath)
+      const url = await signedFileUrl(path)
       const link = document.createElement('a')
       link.href = url
-      link.download = book.epubFileName || 'libro.epub'
+      link.download = kind === 'epub' ? book.epubFileName || 'libro.epub' : book.pdfFileName || 'libro.pdf'
       link.rel = 'noopener'
       document.body.appendChild(link)
       link.click()
       link.remove()
     } catch (error) {
-      showToast(friendlyError(error, 'No pude descargar el EPUB.'))
+      showToast(friendlyError(error, kind === 'epub' ? 'No pude descargar el EPUB.' : 'No pude descargar el PDF.'))
     } finally {
-      setDownloading(false)
+      setDownloading(null)
     }
   }
 
@@ -316,31 +317,57 @@ export function BookDetail({ book }: BookDetailProps) {
         </section>
       ) : null}
 
-      {isAdmin && (book.epubPath || book.epubFileName) ? (
+      {isAdmin && book.ownership === 'owned' ? (
         <section className="panel">
-          <h2>Archivo EPUB</h2>
-          <p>
-            Nombre: {book.epubFileName || 'libro.epub'}
-            {formatBytes(book.epubSizeBytes) ? ` · ${formatBytes(book.epubSizeBytes)}` : ''}
-          </p>
-          <div className="detail-actions">
-            {book.epubPath ? (
-              <button type="button" className="btn btn-primary" onClick={() => void downloadEpub()} disabled={downloading}>
-                {downloading ? 'Preparando…' : 'Descargar EPUB'}
-              </button>
-            ) : null}
-            <button type="button" className="btn btn-ghost" onClick={() => navigate(`${hrefForBook(book)}/epub`)}>
-              Reemplazar EPUB
-            </button>
+          <h2>Archivos</h2>
+          <div className="book-files">
+            <div className="book-file-row">
+              <div>
+                <strong>EPUB</strong>
+                {book.epubPath || book.epubFileName ? (
+                  <p>
+                    {book.epubFileName || 'libro.epub'}
+                    {formatBytes(book.epubSizeBytes) ? ` · ${formatBytes(book.epubSizeBytes)}` : ''}
+                  </p>
+                ) : (
+                  <p className="muted">Todavía no hay un EPUB asociado.</p>
+                )}
+              </div>
+              <div className="detail-actions">
+                {book.epubPath ? (
+                  <button type="button" className="btn btn-primary" onClick={() => void downloadFile('epub')} disabled={downloading !== null}>
+                    {downloading === 'epub' ? 'Preparando…' : 'Descargar EPUB'}
+                  </button>
+                ) : null}
+                <button type="button" className="btn btn-ghost" onClick={() => navigate(`${hrefForBook(book)}/epub`)}>
+                  {book.epubFileName ? 'Reemplazar EPUB' : 'Subir EPUB'}
+                </button>
+              </div>
+            </div>
+            <div className="book-file-row">
+              <div>
+                <strong>PDF</strong>
+                {book.pdfPath || book.pdfFileName ? (
+                  <p>
+                    {book.pdfFileName || 'libro.pdf'}
+                    {formatBytes(book.pdfSizeBytes) ? ` · ${formatBytes(book.pdfSizeBytes)}` : ''}
+                  </p>
+                ) : (
+                  <p className="muted">Todavía no hay un PDF asociado.</p>
+                )}
+              </div>
+              <div className="detail-actions">
+                {book.pdfPath ? (
+                  <button type="button" className="btn btn-primary" onClick={() => void downloadFile('pdf')} disabled={downloading !== null}>
+                    {downloading === 'pdf' ? 'Preparando…' : 'Descargar PDF'}
+                  </button>
+                ) : null}
+                <button type="button" className="btn btn-ghost" onClick={() => navigate(`${hrefForBook(book)}/epub`)}>
+                  {book.pdfFileName ? 'Reemplazar PDF' : 'Subir PDF'}
+                </button>
+              </div>
+            </div>
           </div>
-        </section>
-      ) : isAdmin && book.ownership === 'owned' ? (
-        <section className="panel">
-          <h2>Archivo EPUB</h2>
-          <p className="muted">Todavía no hay un EPUB asociado.</p>
-          <button type="button" className="btn btn-ghost" onClick={() => navigate(`${hrefForBook(book)}/epub`)}>
-            Subir EPUB
-          </button>
         </section>
       ) : null}
 
@@ -384,7 +411,7 @@ export function BookDetail({ book }: BookDetailProps) {
       {confirmDelete ? (
         <ConfirmDialog
           title="Eliminar libro"
-          text={`¿Seguro que quieres eliminar “${book.title}”? También se borrarán su portada y EPUB si existen.`}
+          text={`¿Seguro que quieres eliminar “${book.title}”? También se borrarán su portada, EPUB y PDF si existen.`}
           confirmLabel="Eliminar"
           onCancel={() => setConfirmDelete(false)}
           onConfirm={() => {

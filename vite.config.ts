@@ -36,7 +36,7 @@ export default defineConfig({
         navigateFallback: '/index.html',
         runtimeCaching: [
           {
-            urlPattern: /book-files|\.epub(\?|$)/i,
+            urlPattern: /book-files|\.epub(\?|$)|\.pdf(\?|$)/i,
             handler: 'NetworkOnly',
           },
           {

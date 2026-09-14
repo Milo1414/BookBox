@@ -1,4 +1,5 @@
 import { clampPageCount, normalizeIsbn, normalizeText } from '../lib/books'
+import { mapSubjectsToCategories } from '../lib/categories'
 import type { BookFacts, CoverCandidate, ExternalBookHit } from '../types'
 
 const SEARCH_TIMEOUT_MS = 8000
@@ -15,6 +16,31 @@ function uniqueByUrl(items: CoverCandidate[]): CoverCandidate[] {
     seen.add(item.url)
     return true
   })
+}
+
+function uniqueSubjects(values?: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>()
+  const subjects: string[] = []
+  for (const value of values ?? []) {
+    const trimmed = value?.trim()
+    if (!trimmed) continue
+    const key = normalizeText(trimmed)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    subjects.push(trimmed)
+  }
+  return subjects
+}
+
+function subjectsFromUnknown(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return uniqueSubjects(
+    value.map((item) => {
+      if (typeof item === 'string') return item
+      if (item && typeof item === 'object' && 'name' in item && typeof item.name === 'string') return item.name
+      return null
+    }),
+  )
 }
 
 async function fetchJson<T>(url: string): Promise<T | null> {
@@ -52,6 +78,8 @@ async function openLibraryByIsbn(isbn: string): Promise<{ hits: ExternalBookHit[
     publish_date?: string
     number_of_pages?: number
     authors?: { key: string }[]
+    subjects?: unknown
+    works?: { key: string }[]
   }>(`https://openlibrary.org/isbn/${isbn}.json`)
   if (!data) return { hits: [], covers }
 
@@ -60,6 +88,13 @@ async function openLibraryByIsbn(isbn: string): Promise<{ hits: ExternalBookHit[
   if (authorKey) {
     const authorData = await fetchJson<{ name?: string }>(`https://openlibrary.org${authorKey}.json`)
     author = authorData?.name ?? ''
+  }
+
+  let subjects = subjectsFromUnknown(data.subjects)
+  const workKey = data.works?.[0]?.key
+  if (workKey && subjects.length < 3) {
+    const work = await fetchJson<{ subjects?: unknown }>(`https://openlibrary.org${workKey}.json`)
+    subjects = uniqueSubjects([...subjects, ...subjectsFromUnknown(work?.subjects)])
   }
 
   return {
@@ -72,6 +107,7 @@ async function openLibraryByIsbn(isbn: string): Promise<{ hits: ExternalBookHit[
         publisher: data.publishers?.[0] ?? null,
         published: data.publish_date ?? null,
         pageCount: clampPageCount(data.number_of_pages),
+        subjects,
         source: 'Open Library',
       },
     ],
@@ -89,8 +125,9 @@ async function openLibrarySearch(query: string): Promise<{ hits: ExternalBookHit
       publisher?: string[]
       first_publish_year?: number
       number_of_pages_median?: number
+      subject?: string[]
     }>
-  }>(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=8&fields=title,author_name,isbn,cover_i,publisher,first_publish_year,number_of_pages_median,key`)
+  }>(`https://openlibrary.org/search.json?q=${encodeURIComponent(query)}&limit=8&fields=title,author_name,isbn,cover_i,publisher,first_publish_year,number_of_pages_median,subject,key`)
   if (!data) return { hits: [], covers: [] }
 
   const hits: ExternalBookHit[] = []
@@ -110,6 +147,7 @@ async function openLibrarySearch(query: string): Promise<{ hits: ExternalBookHit
       publisher: doc.publisher?.[0] ?? null,
       published: doc.first_publish_year ? String(doc.first_publish_year) : null,
       pageCount: clampPageCount(doc.number_of_pages_median),
+      subjects: uniqueSubjects(doc.subject),
       source: 'Open Library',
     })
     if (coverUrl) covers.push({ url: coverUrl, source: 'Open Library', label: doc.title || 'Open Library' })
@@ -128,6 +166,7 @@ async function googleBooksSearch(query: string): Promise<{ hits: ExternalBookHit
         publisher?: string
         publishedDate?: string
         pageCount?: number
+        categories?: string[]
       }
     }>
   }>(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=8`)
@@ -149,6 +188,7 @@ async function googleBooksSearch(query: string): Promise<{ hits: ExternalBookHit
       publisher: info.publisher ?? null,
       published: info.publishedDate ?? null,
       pageCount: clampPageCount(info.pageCount),
+      subjects: uniqueSubjects(info.categories),
       source: 'Google Books',
     })
     if (cover) covers.push({ url: cover, source: 'Google Books', label: info.title })
@@ -194,6 +234,7 @@ interface OpenLibraryDoc {
   publisher?: string[]
   first_publish_year?: number
   number_of_pages_median?: number
+  subject?: string[]
   key?: string
 }
 
@@ -262,7 +303,7 @@ function factsFromDoc(doc: OpenLibraryDoc): BookFacts {
 
 async function openLibraryDocs(params: string): Promise<OpenLibraryDoc[]> {
   const data = await fetchJson<{ docs?: OpenLibraryDoc[] }>(
-    `https://openlibrary.org/search.json?${params}&limit=8&fields=title,author_name,isbn,publisher,first_publish_year,number_of_pages_median,key`,
+    `https://openlibrary.org/search.json?${params}&limit=8&fields=title,author_name,isbn,publisher,first_publish_year,number_of_pages_median,subject,key`,
   )
   return data?.docs ?? []
 }
@@ -354,4 +395,43 @@ export async function lookupBookFacts(input: { title?: string; author?: string; 
 
   if (facts.pageCount) factsCache.set(cacheKey, facts)
   return facts
+}
+
+export async function lookupSuggestedCategories(input: {
+  title?: string
+  author?: string
+  isbn?: string
+  subjects?: string[]
+}): Promise<string[]> {
+  const title = input.title?.trim() ?? ''
+  const author = input.author?.trim() ?? ''
+  const collected = [...(input.subjects ?? [])]
+  const jobs = searchJobs(input)
+
+  if (jobs.length) {
+    const { hits } = await collect(jobs)
+    const ranked = hits
+      .map((hit) => ({
+        hit,
+        score:
+          scoreDoc(
+            {
+              title: hit.title,
+              author_name: hit.author ? hit.author.split(',').map((name) => name.trim()) : [],
+              number_of_pages_median: hit.pageCount ?? undefined,
+              subject: hit.subjects,
+            },
+            title || hit.title,
+            author,
+          ) + (hit.source === 'Google Books' && hit.subjects?.length ? 2 : 0),
+      }))
+      .filter((item) => item.hit.subjects?.length)
+      .sort((a, b) => b.score - a.score)
+
+    for (const item of ranked.slice(0, 4)) {
+      collected.push(...(item.hit.subjects ?? []))
+    }
+  }
+
+  return mapSubjectsToCategories(collected)
 }

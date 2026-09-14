@@ -14,6 +14,10 @@ export function epubObjectPath(userId: string, bookId: string): string {
   return `${userId}/${bookId}/libro.epub`
 }
 
+export function pdfObjectPath(userId: string, bookId: string): string {
+  return `${userId}/${bookId}/libro.pdf`
+}
+
 export async function uploadCover(userId: string, bookId: string, blob: Blob): Promise<{ path: string; url: string }> {
   const client = requireClient()
   const path = coverObjectPath(userId, bookId)
@@ -39,11 +43,27 @@ export async function uploadEpub(userId: string, bookId: string, file: File | Bl
   return { path, size: file.size }
 }
 
-export async function signedEpubUrl(path: string, expiresIn = 60): Promise<string> {
+export async function uploadPdf(userId: string, bookId: string, file: File | Blob): Promise<{ path: string; size: number }> {
+  const client = requireClient()
+  const path = pdfObjectPath(userId, bookId)
+  const { error } = await client.storage.from(FILE_BUCKET).upload(path, file, {
+    upsert: true,
+    contentType: 'application/pdf',
+    cacheControl: '0',
+  })
+  if (error) throw error
+  return { path, size: file.size }
+}
+
+export async function signedFileUrl(path: string, expiresIn = 60): Promise<string> {
   const client = requireClient()
   const { data, error } = await client.storage.from(FILE_BUCKET).createSignedUrl(path, expiresIn)
   if (error || !data?.signedUrl) throw error ?? new Error('No pude generar el enlace de descarga.')
   return data.signedUrl
+}
+
+export async function signedEpubUrl(path: string, expiresIn = 60): Promise<string> {
+  return signedFileUrl(path, expiresIn)
 }
 
 export async function removeStorageObject(bucket: string, path?: string | null): Promise<void> {
@@ -53,6 +73,14 @@ export async function removeStorageObject(bucket: string, path?: string | null):
   if (error) throw error
 }
 
-export async function removeBookFiles(coverPath?: string | null, epubPath?: string | null): Promise<void> {
-  await Promise.all([removeStorageObject(COVER_BUCKET, coverPath), removeStorageObject(FILE_BUCKET, epubPath)])
+export async function removeBookFiles(
+  coverPath?: string | null,
+  epubPath?: string | null,
+  pdfPath?: string | null,
+): Promise<void> {
+  await Promise.all([
+    removeStorageObject(COVER_BUCKET, coverPath),
+    removeStorageObject(FILE_BUCKET, epubPath),
+    removeStorageObject(FILE_BUCKET, pdfPath),
+  ])
 }

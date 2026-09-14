@@ -13,7 +13,7 @@ import {
 } from '../lib/storage'
 import * as booksApi from '../services/books'
 import { blobToWebp, urlToWebpBlob } from '../services/epub'
-import { removeBookFiles, uploadCover, uploadEpub } from '../services/storage'
+import { removeBookFiles, uploadCover, uploadEpub, uploadPdf } from '../services/storage'
 import type { Book } from '../types'
 
 interface ToastState {
@@ -32,7 +32,7 @@ interface LibraryContextValue {
   showToast: (message: string) => void
   dismissToast: () => void
   upsertBook: (book: Book, options?: { coverFile?: Blob | null; removeCover?: boolean }) => Promise<Book>
-  attachEpub: (book: Book, file: File, coverBlob?: Blob | null) => Promise<Book>
+  attachBookFiles: (book: Book, files: { epub?: File | null; pdf?: File | null }, coverBlob?: Blob | null) => Promise<Book>
   deleteBook: (id: string) => Promise<void>
   getBook: (id: string) => Book | undefined
   importLocalToSupabase: () => Promise<void>
@@ -173,6 +173,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         epubPath: input.epubPath ?? existing?.epubPath ?? null,
         epubFileName: input.epubFileName ?? existing?.epubFileName ?? null,
         epubSizeBytes: input.epubSizeBytes ?? existing?.epubSizeBytes ?? null,
+        pdfPath: input.pdfPath ?? existing?.pdfPath ?? null,
+        pdfFileName: input.pdfFileName ?? existing?.pdfFileName ?? null,
+        pdfSizeBytes: input.pdfSizeBytes ?? existing?.pdfSizeBytes ?? null,
         coverPath: options?.removeCover ? null : (input.coverPath ?? existing?.coverPath ?? null),
         progress: input.progress !== undefined ? input.progress : existing?.progress ?? null,
         pageCount: input.pageCount !== undefined ? input.pageCount : existing?.pageCount ?? null,
@@ -227,7 +230,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       if (configured && user && !migrationPending) {
         setBusy('Eliminando...')
         try {
-          await removeBookFiles(book.coverPath, book.epubPath)
+          await removeBookFiles(book.coverPath, book.epubPath, book.pdfPath)
           await booksApi.deleteBookRow(book.id)
           setBooks((current) => current.filter((item) => item.id !== book.id))
         } finally {
@@ -240,20 +243,33 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     [books, configured, isAdmin, migrationPending, persistLocal, user],
   )
 
-  const attachEpub = useCallback(
-    async (book: Book, file: File, coverBlob?: Blob | null) => {
+  const attachBookFiles = useCallback(
+    async (book: Book, files: { epub?: File | null; pdf?: File | null }, coverBlob?: Blob | null) => {
       if (!isAdmin) throw new Error('No tenés permiso para hacer eso.')
       const userId = user?.id
-      let next: Book = {
-        ...book,
-        format: book.format === 'physical' || book.format === 'both' ? 'both' : 'epub',
-        epubFileName: file.name,
-        epubSizeBytes: file.size,
+      const epub = files.epub ?? null
+      const pdf = files.pdf ?? null
+      let next: Book = { ...book }
+      if (epub || pdf) {
+        next = {
+          ...next,
+          format: next.format === 'physical' || next.format === 'both' ? 'both' : 'epub',
+        }
       }
-      if (userId && configured && !migrationPending) {
-        setBusy('Subiendo EPUB...')
-        const uploaded = await uploadEpub(userId, book.id, file)
-        next = { ...next, epubPath: uploaded.path, epubSizeBytes: uploaded.size }
+      if (epub) {
+        next = { ...next, epubFileName: epub.name, epubSizeBytes: epub.size }
+      }
+      if (pdf) {
+        next = { ...next, pdfFileName: pdf.name, pdfSizeBytes: pdf.size }
+      }
+      if (userId && configured && !migrationPending && (epub || pdf)) {
+        setBusy(epub && pdf ? 'Subiendo EPUB y PDF...' : epub ? 'Subiendo EPUB...' : 'Subiendo PDF...')
+        const [epubUploaded, pdfUploaded] = await Promise.all([
+          epub ? uploadEpub(userId, book.id, epub) : Promise.resolve(null),
+          pdf ? uploadPdf(userId, book.id, pdf) : Promise.resolve(null),
+        ])
+        if (epubUploaded) next = { ...next, epubPath: epubUploaded.path, epubSizeBytes: epubUploaded.size }
+        if (pdfUploaded) next = { ...next, pdfPath: pdfUploaded.path, pdfSizeBytes: pdfUploaded.size }
       }
       setBusy('Guardando...')
       return upsertBook(next, { coverFile: coverBlob ?? undefined })
@@ -295,6 +311,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       books: books.map((book) => ({
         ...book,
         epubPath: book.epubPath ?? null,
+        pdfPath: book.pdfPath ?? null,
         coverPath: book.coverPath ?? null,
       })),
     }
@@ -361,7 +378,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       showToast,
       dismissToast,
       upsertBook,
-      attachEpub,
+      attachBookFiles,
       deleteBook,
       getBook,
       importLocalToSupabase,
@@ -380,7 +397,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       showToast,
       dismissToast,
       upsertBook,
-      attachEpub,
+      attachBookFiles,
       deleteBook,
       getBook,
       importLocalToSupabase,

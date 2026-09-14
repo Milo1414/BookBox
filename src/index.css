@@ -1279,10 +1279,58 @@ main {
   margin-bottom: 1rem;
 }
 
+.file-drop-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.file-drop-grid .dropzone {
+  margin-bottom: 0;
+}
+
 .dropzone.is-dragging,
 .dropzone:hover {
   background: var(--bg-soft);
   border-color: var(--accent);
+}
+
+.dropzone.has-file {
+  border-style: solid;
+  border-color: rgba(212, 165, 116, 0.55);
+}
+
+.dropzone span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.file-summary {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.4rem;
+  display: grid;
+  gap: 0.25rem;
+  color: var(--text-faint);
+  font-size: 0.9rem;
+}
+
+.book-files {
+  display: grid;
+  gap: 1rem;
+}
+
+.book-file-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.book-file-row p {
+  margin: 0.2rem 0 0;
 }
 
 .epub-preview {
@@ -1348,6 +1396,10 @@ main {
 
 @media (max-width: 760px) {
   .epub-preview {
+    grid-template-columns: 1fr;
+  }
+
+  .file-drop-grid {
     grid-template-columns: 1fr;
   }
 

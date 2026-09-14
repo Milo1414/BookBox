@@ -38,6 +38,20 @@ function extractPublished(opf: Document): string | null {
   return value || null
 }
 
+function extractSubjects(opf: Document): string[] {
+  const nodes = [...opf.getElementsByTagName('dc:subject'), ...opf.getElementsByTagName('subject')]
+  const seen = new Set<string>()
+  const subjects: string[] = []
+  for (const node of nodes) {
+    const value = textContent(node)
+    const key = value.toLowerCase()
+    if (!value || seen.has(key)) continue
+    seen.add(key)
+    subjects.push(value)
+  }
+  return subjects
+}
+
 function extractIsbn(opf: Document): string | null {
   const identifiers = [...opf.getElementsByTagName('dc:identifier'), ...opf.getElementsByTagName('identifier')]
   for (const node of identifiers) {
@@ -134,6 +148,7 @@ export async function parseEpub(file: File): Promise<EpubMetadata> {
   const isbn = extractIsbn(opf)
   const pageCount = extractPageCount(opf)
   const published = extractPublished(opf)
+  const subjects = extractSubjects(opf)
 
   let coverBlob: Blob | null = null
   let coverUrl: string | null = null
@@ -156,6 +171,7 @@ export async function parseEpub(file: File): Promise<EpubMetadata> {
     published,
     pageCount,
     language,
+    subjects,
     coverBlob,
     coverUrl,
     fileName: file.name,

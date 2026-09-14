@@ -83,7 +83,7 @@ export function Profile() {
               Agregar libro
             </button>
             <button type="button" className="btn btn-ghost" onClick={() => navigate('/subir-epub')}>
-              Subir EPUB
+              Subir EPUB o PDF
             </button>
             <button type="button" className="btn btn-ghost" onClick={() => exportLibrary()}>
               Exportar biblioteca

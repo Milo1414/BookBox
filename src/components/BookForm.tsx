@@ -6,6 +6,7 @@ import { friendlyError } from '../lib/errors'
 import { formatLabel, ownershipLabel, priorityLabel, statusLabel } from '../lib/labels'
 import { hrefForBook, navigate } from '../lib/routing'
 import { blobToWebp } from '../services/epub'
+import { mapSubjectsToCategories } from '../lib/categories'
 import { searchCoverCandidates, searchExternalBooks } from '../services/search'
 import type { Book, CoverCandidate, ExternalBookHit, Format, Ownership, Priority, ReadingStatus } from '../types'
 import { BookCover } from './BookCover'
@@ -146,14 +147,21 @@ export function BookForm({ book }: BookFormProps) {
   }
 
   function applyHit(hit: ExternalBookHit) {
-    update('title', hit.title)
-    if (hit.author) update('author', hit.author)
-    if (hit.isbn) update('isbn', hit.isbn)
-    if (hit.pageCount) update('pageCount', String(hit.pageCount))
-    if (hit.publisher) update('publisher', hit.publisher)
-    if (hit.published) update('published', hit.published)
+    setState((current) => {
+      const suggested = mapSubjectsToCategories(hit.subjects ?? [])
+      return {
+        ...current,
+        title: hit.title,
+        author: hit.author || current.author,
+        isbn: hit.isbn || current.isbn,
+        pageCount: hit.pageCount ? String(hit.pageCount) : current.pageCount,
+        publisher: hit.publisher || current.publisher,
+        published: hit.published || current.published,
+        coverUrl: hit.coverUrl || current.coverUrl,
+        categories: current.categories.length || !suggested.length ? current.categories : suggested,
+      }
+    })
     if (hit.coverUrl) {
-      update('coverUrl', hit.coverUrl)
       setCoverFile(null)
       setRemoveCover(false)
     }
@@ -193,6 +201,9 @@ export function BookForm({ book }: BookFormProps) {
       epubFileName: book?.epubFileName ?? null,
       epubPath: book?.epubPath ?? null,
       epubSizeBytes: book?.epubSizeBytes ?? null,
+      pdfFileName: book?.pdfFileName ?? null,
+      pdfPath: book?.pdfPath ?? null,
+      pdfSizeBytes: book?.pdfSizeBytes ?? null,
       createdAt: book?.createdAt ?? new Date().toISOString(),
     }
   }
@@ -233,9 +244,13 @@ export function BookForm({ book }: BookFormProps) {
         </div>
         {!book ? (
           <button type="button" className="btn btn-ghost" onClick={() => navigate('/subir-epub')}>
-            Subir EPUB
+            Subir EPUB o PDF
           </button>
-        ) : null}
+        ) : (
+          <button type="button" className="btn btn-ghost" onClick={() => navigate(`${hrefForBook(book)}/epub`)}>
+            Archivos EPUB / PDF
+          </button>
+        )}
       </div>
 
       {!book ? (
@@ -437,6 +452,9 @@ export function BookForm({ book }: BookFormProps) {
                 <CategoryTag key={category} category={category} active={state.categories.includes(category)} onClick={() => toggleCategory(category)} />
               ))}
             </div>
+            {!book ? (
+              <p className="field-hint">Si elegís un resultado de la búsqueda, sugerimos categorías según Google Books y Open Library.</p>
+            ) : null}
           </div>
 
           <label className="field">

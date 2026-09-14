@@ -30,6 +30,9 @@ export interface Book {
   epubFileName?: string | null
   epubPath?: string | null
   epubSizeBytes?: number | null
+  pdfFileName?: string | null
+  pdfPath?: string | null
+  pdfSizeBytes?: number | null
   createdAt: string
   updatedAt?: string
 }
@@ -70,6 +73,7 @@ export interface ExternalBookHit {
   publisher?: string | null
   published?: string | null
   pageCount?: number | null
+  subjects?: string[]
   source: string
 }
 
@@ -87,6 +91,7 @@ export interface EpubMetadata {
   published: string | null
   pageCount: number | null
   language: string | null
+  subjects: string[]
   coverBlob: Blob | null
   coverUrl: string | null
   fileName: string

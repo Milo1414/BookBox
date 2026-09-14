@@ -29,6 +29,9 @@ export interface BookRow {
   epub_file_name?: string | null
   epub_path?: string | null
   epub_size_bytes?: number | null
+  pdf_file_name?: string | null
+  pdf_path?: string | null
+  pdf_size_bytes?: number | null
   created_at: string
   updated_at?: string
 }
@@ -61,6 +64,9 @@ export function fromRow(row: BookRow): Book {
     epubFileName: row.epub_file_name ?? null,
     epubPath: row.epub_path ?? null,
     epubSizeBytes: row.epub_size_bytes ?? null,
+    pdfFileName: row.pdf_file_name ?? null,
+    pdfPath: row.pdf_path ?? null,
+    pdfSizeBytes: row.pdf_size_bytes ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -94,6 +100,9 @@ export function toInsert(book: Book, userId: string) {
     epub_file_name: book.epubFileName ?? null,
     epub_path: book.epubPath ?? null,
     epub_size_bytes: book.epubSizeBytes ?? null,
+    pdf_file_name: book.pdfFileName ?? null,
+    pdf_path: book.pdfPath ?? null,
+    pdf_size_bytes: book.pdfSizeBytes ?? null,
     created_at: book.createdAt,
   }
 }
@@ -135,9 +144,24 @@ export async function insertBooks(books: Book[], userId: string): Promise<Book[]
 export async function updateBook(book: Book, userId: string): Promise<Book> {
   const client = requireClient()
   const payload = toInsert(book, userId)
-  const { id, created_at: _created, user_id: _user, epub_path, epub_file_name, epub_size_bytes, ...rest } = payload
-  // Don't blank EPUB association if the client loaded the public catalog (no file fields).
-  const patch = epub_path ? { ...rest, epub_path, epub_file_name, epub_size_bytes } : rest
+  const {
+    id,
+    created_at: _created,
+    user_id: _user,
+    epub_path,
+    epub_file_name,
+    epub_size_bytes,
+    pdf_path,
+    pdf_file_name,
+    pdf_size_bytes,
+    ...rest
+  } = payload
+  // Don't blank file associations if the client loaded the public catalog (no file fields).
+  const patch = {
+    ...rest,
+    ...(epub_path ? { epub_path, epub_file_name, epub_size_bytes } : {}),
+    ...(pdf_path ? { pdf_path, pdf_file_name, pdf_size_bytes } : {}),
+  }
   const { data, error } = await client.from('books').update(patch).eq('id', id).select('*').single()
   if (error) throw error
   return fromRow(data as BookRow)
