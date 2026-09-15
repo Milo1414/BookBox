@@ -1,7 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { CATEGORIES, FORMAT_OPTIONS, OWNERSHIP_OPTIONS, PRIORITY_ORDER, STATUS_OPTIONS } from '../constants'
 import { useLibrary } from '../context/LibraryContext'
-import { createBookId, createSlug, clampPageCount, clampProgress, findDuplicate, progressFromPage } from '../lib/books'
+import { createBookId, createSlug, clampPageCount, clampProgress, findDuplicate, localIsoDate, progressFromPage } from '../lib/books'
 import { friendlyError } from '../lib/errors'
 import { formatLabel, ownershipLabel, priorityLabel, statusLabel } from '../lib/labels'
 import { hrefForBook, navigate } from '../lib/routing'
@@ -197,7 +197,7 @@ export function BookForm({ book }: BookFormProps) {
       notes: emptyToNull(state.notes),
       learnings: isRead ? emptyToNull(state.learnings) : null,
       startedAt: isReading || isRead ? emptyToNull(state.startedAt) : null,
-      finishedAt: isRead ? emptyToNull(state.finishedAt) || new Date().toISOString().slice(0, 10) : null,
+      finishedAt: isRead ? emptyToNull(state.finishedAt) || localIsoDate() : null,
       epubFileName: book?.epubFileName ?? null,
       epubPath: book?.epubPath ?? null,
       epubSizeBytes: book?.epubSizeBytes ?? null,
@@ -551,13 +551,14 @@ export function BookForm({ book }: BookFormProps) {
             void persist(next)
           }}
           onConvert={() => {
+            const built = buildBook()
             const next: Book = {
               ...duplicate,
-              ...buildBook(),
+              ...built,
               id: duplicate.id,
               slug: duplicate.slug,
               ownership: 'owned',
-              readingStatus: 'pending',
+              readingStatus: built.readingStatus ?? 'pending',
               format: duplicate.format === 'physical' ? 'both' : state.format,
               whyRead: duplicate.whyRead ?? emptyToNull(state.whyRead),
               notes: duplicate.notes ?? emptyToNull(state.notes),

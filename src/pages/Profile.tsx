@@ -54,7 +54,7 @@ export function Profile() {
         <div>
           <p className="eyebrow">Perfil</p>
           <h1>{isAdmin ? user?.email ?? 'Administración' : 'La biblioteca'}</h1>
-          <p className="lede">Lo leído este mes, este año y el resto de la estantería.</p>
+          <p className="lede">Lo leído este mes y este año, según la fecha de finalización, y el resto de la estantería.</p>
         </div>
       </header>
 
@@ -69,10 +69,18 @@ export function Profile() {
         <Stat value={report.wishlist} label="Deseados" />
       </section>
 
-      {report.yearBooks.length > 0 ? (
-        <ShelfRow title={`Terminados en ${year}`} books={report.yearBooks.slice(0, 8)} variant="browse" href="/biblioteca" />
+      {report.yearGroups.length > 0 ? (
+        report.yearGroups.map((group) => (
+          <ShelfRow
+            key={group.year}
+            title={`Terminados en ${group.year}`}
+            books={group.books.slice(0, 8)}
+            variant="browse"
+            href="/biblioteca"
+          />
+        ))
       ) : (
-        <p className="shelf-empty">Todavía no hay libros con fecha de finalización este año. Si ya los leíste, cargala en el libro.</p>
+        <p className="shelf-empty">Todavía no hay libros marcados como leídos. Si ya los terminaste, cargalos con estado Leído.</p>
       )}
 
       {isAdmin ? (

@@ -2,7 +2,7 @@ import { useState, type DragEvent } from 'react'
 import { CATEGORIES, FORMAT_OPTIONS, PRIORITY_ORDER, STATUS_OPTIONS } from '../constants'
 import { useAuth } from '../context/AuthContext'
 import { useLibrary } from '../context/LibraryContext'
-import { clampPageCount, createBookId, createSlug, findDuplicate } from '../lib/books'
+import { clampPageCount, createBookId, createSlug, findDuplicate, localIsoDate } from '../lib/books'
 import { formatBytes, friendlyError } from '../lib/errors'
 import { formatLabel, priorityLabel, statusLabel } from '../lib/labels'
 import { hrefForBook, navigate } from '../lib/routing'
@@ -163,9 +163,9 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
       whyRead: base?.whyRead ?? null,
       notes: base?.notes ?? null,
       learnings: base?.learnings ?? null,
-      progress: base?.progress ?? null,
+      progress: readingStatus === 'read' ? 100 : readingStatus === 'pending' ? null : base?.progress ?? null,
       startedAt: base?.startedAt ?? null,
-      finishedAt: base?.finishedAt ?? null,
+      finishedAt: readingStatus === 'read' ? base?.finishedAt || localIsoDate() : readingStatus === 'pending' ? null : base?.finishedAt ?? null,
       epubFileName: epubFile?.name ?? base?.epubFileName ?? null,
       epubPath: base?.epubPath ?? null,
       epubSizeBytes: epubFile?.size ?? base?.epubSizeBytes ?? null,
@@ -410,8 +410,8 @@ export function EpubImport({ replaceBook }: { replaceBook?: Book }) {
             const converted = {
               ...duplicate,
               ownership: 'owned' as const,
-              readingStatus: 'pending' as const,
-              format: duplicate.format === 'physical' ? ('both' as const) : ('epub' as const),
+              readingStatus,
+              format: duplicate.format === 'physical' ? ('both' as const) : format,
               priority: duplicate.priority ?? priority,
             }
             setDuplicate(null)

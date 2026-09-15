@@ -208,7 +208,13 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
           setBusy('Guardando...')
           const exists = books.some((item) => item.id === book.id)
           const saved = exists ? await booksApi.updateBook(book, userId) : await booksApi.insertBook(book, userId)
-          setBooks((current) => (current.some((item) => item.id === saved.id) ? current.map((item) => (item.id === saved.id ? saved : item)) : [saved, ...current]))
+          setBooks((current) => {
+            const next = current.some((item) => item.id === saved.id)
+              ? current.map((item) => (item.id === saved.id ? saved : item))
+              : [saved, ...current]
+            writeCatalogCache(next)
+            return next
+          })
           return saved
         }
 
@@ -232,7 +238,11 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
         try {
           await removeBookFiles(book.coverPath, book.epubPath, book.pdfPath)
           await booksApi.deleteBookRow(book.id)
-          setBooks((current) => current.filter((item) => item.id !== book.id))
+          setBooks((current) => {
+            const next = current.filter((item) => item.id !== book.id)
+            writeCatalogCache(next)
+            return next
+          })
         } finally {
           setBusy(null)
         }

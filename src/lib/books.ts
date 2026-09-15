@@ -131,6 +131,13 @@ export function hasCover(book: Book): boolean {
   return Boolean(book.coverUrl?.trim())
 }
 
+export function localIsoDate(now = new Date()): string {
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 export function parseBookDate(value?: string | null): Date | null {
   if (!value) return null
   const day = value.slice(0, 10)
@@ -140,6 +147,14 @@ export function parseBookDate(value?: string | null): Date | null {
   }
   const parsed = new Date(value)
   return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+export function bookFinishedDate(book: Pick<Book, 'finishedAt' | 'createdAt'>): Date | null {
+  const finished = parseBookDate(book.finishedAt)
+  if (finished) return finished
+  if (!book.createdAt) return null
+  const created = new Date(book.createdAt)
+  return Number.isNaN(created.getTime()) ? null : created
 }
 
 function sameMonth(date: Date, now: Date): boolean {
@@ -153,7 +168,7 @@ function sumPages(books: Book[]): number {
 export function readingStreakMonths(books: Book[], now = new Date()): number {
   const months = new Set<string>()
   for (const book of books) {
-    const date = parseBookDate(book.finishedAt)
+    const date = bookFinishedDate(book)
     if (!date) continue
     months.add(`${date.getFullYear()}-${date.getMonth()}`)
   }
@@ -169,14 +184,30 @@ export function readingStreakMonths(books: Book[], now = new Date()): number {
   return streak
 }
 
+function compareFinishedDesc(a: Book, b: Book): number {
+  const left = a.finishedAt || a.createdAt || ''
+  const right = b.finishedAt || b.createdAt || ''
+  return right.localeCompare(left)
+}
+
 export function readingReport(books: Book[], now = new Date()) {
   const owned = books.filter((book) => book.ownership === 'owned')
   const read = owned.filter((book) => book.readingStatus === 'read')
   const dated = read
-    .map((book) => ({ book, date: parseBookDate(book.finishedAt) }))
+    .map((book) => ({ book, date: bookFinishedDate(book) }))
     .filter((item): item is { book: Book; date: Date } => item.date != null)
   const monthBooks = dated.filter((item) => sameMonth(item.date, now)).map((item) => item.book)
   const yearBooks = dated.filter((item) => item.date.getFullYear() === now.getFullYear()).map((item) => item.book)
+  const grouped = new Map<number, Book[]>()
+  for (const item of dated) {
+    const year = item.date.getFullYear()
+    const list = grouped.get(year) ?? []
+    list.push(item.book)
+    grouped.set(year, list)
+  }
+  const yearGroups = [...grouped.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([year, list]) => ({ year, books: [...list].sort(compareFinishedDesc) }))
   return {
     owned: owned.length,
     pending: owned.filter((book) => book.readingStatus === 'pending').length,
@@ -189,7 +220,8 @@ export function readingReport(books: Book[], now = new Date()) {
     pagesYear: sumPages(yearBooks),
     pagesTotal: sumPages(read),
     streakMonths: readingStreakMonths(read, now),
-    yearBooks: [...yearBooks].sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? '')),
+    yearBooks: [...yearBooks].sort(compareFinishedDesc),
+    yearGroups,
   }
 }
 

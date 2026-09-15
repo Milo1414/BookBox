@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { FORMAT_OPTIONS, PRIORITY_ORDER, STATUS_OPTIONS } from '../constants'
 import { useAuth } from '../context/AuthContext'
 import { useLibrary } from '../context/LibraryContext'
-import { clampPageCount, clampProgress, currentPage, progressFromPage } from '../lib/books'
+import { clampPageCount, clampProgress, currentPage, localIsoDate, progressFromPage } from '../lib/books'
 import { formatBytes, friendlyError } from '../lib/errors'
 import { formatDate, formatLabel, formatPages, formatPublished, priorityLabel, statusLabel } from '../lib/labels'
 import { hrefForBook, navigate } from '../lib/routing'
@@ -82,12 +82,15 @@ export function BookDetail({ book }: BookDetailProps) {
 
   async function convertToOwned() {
     try {
+      const isRead = convert.readingStatus === 'read'
       await upsertBook({
         ...book,
         ownership: 'owned',
         format: convert.format,
         readingStatus: convert.readingStatus,
         priority: convert.priority,
+        progress: isRead ? 100 : convert.readingStatus === 'pending' ? null : book.progress,
+        finishedAt: isRead ? book.finishedAt || localIsoDate() : convert.readingStatus === 'pending' ? null : book.finishedAt,
       })
       setConverting(false)
       showToast('Pasó a tu biblioteca.')
@@ -224,7 +227,7 @@ export function BookDetail({ book }: BookDetailProps) {
                         className={`chip ${book.readingStatus === status ? 'is-active' : ''}`}
                         onClick={() => {
                           if (status === 'pending') void patch({ readingStatus: status, progress: null, rating: null, finishedAt: null })
-                          else if (status === 'read') void patch({ readingStatus: status, progress: 100, finishedAt: book.finishedAt || new Date().toISOString().slice(0, 10) })
+                          else if (status === 'read') void patch({ readingStatus: status, progress: 100, finishedAt: book.finishedAt || localIsoDate() })
                           else void patch({ readingStatus: status, rating: null, finishedAt: null })
                         }}
                       >
